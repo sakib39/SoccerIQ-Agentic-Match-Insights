@@ -154,7 +154,11 @@ if st.button("Run Analysis", type="primary", use_container_width=True):
     cards_html = []
     for bk in blocks:
         # Look for a scoreline like "YYYY-MM-DD — Home X–Y Away"
-        scoreline = next((x for x in bk if "—" in x and "–" in x), None)
+        scoreline = next((
+    x for x in bk 
+    if re.search(r"\d{4}-\d{2}-\d{2}.*(—|-).*?(\d+[-–]\d+)", x)
+), None)
+        
         if not scoreline:
             continue
 
