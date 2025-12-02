@@ -74,7 +74,6 @@ project/
 
 ### 1️⃣ Clone the repository
 
-```bash
 git clone https://github.com/<your-username>/<your-repo-name>.git
 cd <your-repo-name>
 
@@ -96,7 +95,6 @@ streamlit run app.py
 Open the Streamlit UI
 Type a natural-language query, e.g.:
 Give me result and stats between Arsenal vs Tottenham, season 2021
-
 
 The agent will:
 Parse the prompt
@@ -129,4 +127,3 @@ If you have ideas or want to collaborate, feel free to reach out!
 Najmus Sakib
 📧 snajmus16@gmail.com
 🔗 LinkedIn: https://www.linkedin.com/in/najmussakib97/
-```
