@@ -4,10 +4,11 @@ import streamlit as st
 
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
-from langchain.agents import initialize_agent, AgentType
 from langchain.tools import StructuredTool
+from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langchain_core.prompts import ChatPromptTemplate
 
-# --- your existing tool function; DO NOT CHANGE this file ---
+# --- your existing tool function; DO NOT CHANGE this import ---
 from Football_Agent import head_to_head_report  # noqa: F401
 
 # ---------- LangChain tool wiring (agent parses raw prompt for us) ----------
@@ -31,12 +32,33 @@ h2h_tool = StructuredTool.from_function(
     args_schema=H2HArgs,
 )
 
+# LLM
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
-agent = initialize_agent(
-    tools=[h2h_tool],
+# New-style LangChain agent: prompt + tool-calling agent + executor
+prompt_template = ChatPromptTemplate.from_messages([
+    (
+        "system",
+        (
+            "You are a football statistics assistant. "
+            "When the user asks about matches between two teams, "
+            "you MUST call the `head_to_head_report` tool to generate the report. "
+            "Ensure you include the season year (e.g., 2022) when using the tool. "
+            "After the tool runs, summarize the results clearly."
+        ),
+    ),
+    ("human", "{input}"),
+])
+
+agent_runnable = create_tool_calling_agent(
     llm=llm,
-    agent=AgentType.OPENAI_FUNCTIONS,   # lets the LLM extract args from raw prompt
+    tools=[h2h_tool],
+    prompt=prompt_template,
+)
+
+agent = AgentExecutor(
+    agent=agent_runnable,
+    tools=[h2h_tool],
     verbose=True,
     handle_parsing_errors=True,
     max_iterations=6,
@@ -69,16 +91,20 @@ hr { border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 14px 0;
 """, unsafe_allow_html=True)
 
 st.title("⚽ SoccerIQ — Agentic Match Insights")
-st.markdown('<div class="small-hint">Ask in plain English, e.g. <i>“Give me result and stats between Manchester United vs Liverpool, season 2022”</i></div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="small-hint">Ask in plain English, e.g. '
+    '<i>“Give me result and stats between Manchester United vs Liverpool, season 2022”</i></div>',
+    unsafe_allow_html=True,
+)
 
 # ---------- Prompt ----------
-prompt = st.text_input(
+user_query = st.text_input(
     "Prompt",
     value="Give me result and stats between Chelsea vs Liverpool, season 2022",
     placeholder="Give me result and stats between Team A vs Team B, season YYYY"
 )
 
-cols = st.columns([1,1,2])
+cols = st.columns([1, 1, 2])
 with cols[0]:
     show_charts = st.toggle("Show charts", value=False, help="Turn on to render saved charts (optional).")
 with cols[1]:
@@ -88,13 +114,16 @@ with cols[1]:
 if st.button("Run Analysis", type="primary", use_container_width=True):
     with st.spinner("Agent is working..."):
         # RAW prompt → agent; the tool schema guides argument extraction
-        resp = agent.invoke({"input": prompt})
+        resp = agent.invoke({"input": user_query})
         output_text = resp.get("output", "") if isinstance(resp, dict) else str(resp)
 
     # Friendly warning if agent claims no fixtures
     if "No fixtures found" in output_text:
-        st.warning("No fixtures were found. Double-check the season (e.g., 2022 for EPL 2022–23) and team names. You can also try phrasing like: “Team A vs Team B, season 2022”.")
-    
+        st.warning(
+            "No fixtures were found. Double-check the season (e.g., 2022 for EPL 2022–23) and team names. "
+            "You can also try phrasing like: “Team A vs Team B, season 2022”."
+        )
+
     # ---------- Render: pretty match cards + stat pills ----------
     st.markdown("### Results")
 
@@ -104,17 +133,19 @@ if st.button("Run Analysis", type="primary", use_container_width=True):
         tok = "chart saved: "
         if tok in ln:
             chart_paths.append(ln.split(tok, 1)[1].strip())
-    # Also capture markdown images: ![alt](path)
     chart_paths += re.findall(r'!\[.*?\]\((.*?)\)', output_text)
 
     # Split into blocks by blank line
     blocks, block = [], []
     for ln in output_text.splitlines():
         if ln.strip() == "":
-            if block: blocks.append(block); block = []
+            if block:
+                blocks.append(block)
+                block = []
         else:
             block.append(ln)
-    if block: blocks.append(block)
+    if block:
+        blocks.append(block)
 
     def pill_html(label, home_val, away_val):
         return f'<span class="pill"><b>{label}</b>: {home_val} | {away_val}</span>'
@@ -137,14 +168,14 @@ if st.button("Run Analysis", type="primary", use_container_width=True):
 
         # Try to find stat lines in this block (best-effort)
         sog_line = next((x for x in bk if "Shots on goal" in x or "Shots on Goal" in x), "")
-        ts_line  = next((x for x in bk if "Total shots" in x or "Total Shots" in x), "")
+        ts_line = next((x for x in bk if "Total shots" in x or "Total Shots" in x), "")
         pos_line = next((x for x in bk if "Possession" in x), "")
 
-        # Best-effort value extraction (very light; we avoid changing your tool)
+        # Best-effort value extraction
         def two_vals(line):
-            # expects something like: "Shots on goal — A: 3, B: 4" or a small table; fallback to em-dash
             m = re.findall(r":\s*([\d\.%]+)", line)
-            if len(m) >= 2: return m[0], m[1]
+            if len(m) >= 2:
+                return m[0], m[1]
             return "—", "—"
 
         pill_list = []
@@ -190,7 +221,6 @@ if st.button("Run Analysis", type="primary", use_container_width=True):
                 with grid[i % 2]:
                     st.image(p, use_container_width=True)
             else:
-                # allow remote URLs or non-existent local paths to just display via markdown
                 if p.startswith("http://") or p.startswith("https://"):
                     with grid[i % 2]:
                         st.image(p, use_container_width=True)
