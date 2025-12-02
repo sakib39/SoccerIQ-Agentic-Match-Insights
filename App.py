@@ -48,6 +48,7 @@ prompt_template = ChatPromptTemplate.from_messages([
         ),
     ),
     ("human", "{input}"),
+    ("assistant", "{agent_scratchpad}"),  # NEW LINE — REQUIRED
 ])
 
 agent_runnable = create_tool_calling_agent(
