@@ -8,10 +8,10 @@ from langchain.tools import StructuredTool
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate
 
-# --- your existing tool function; DO NOT CHANGE this import ---
-from Football_Agent import head_to_head_report  # noqa: F401
 
-# ---------- LangChain tool wiring (agent parses raw prompt for us) ----------
+from Football_Agent import head_to_head_report  
+
+
 class H2HArgs(BaseModel):
     """Arguments for head_to_head_report."""
     team1: str = Field(..., description="Team name, e.g., 'Chelsea'")
@@ -35,7 +35,7 @@ h2h_tool = StructuredTool.from_function(
 # LLM
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
-# New-style LangChain agent: prompt + tool-calling agent + executor
+
 prompt_template = ChatPromptTemplate.from_messages([
     (
         "system",

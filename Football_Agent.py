@@ -29,7 +29,7 @@ CACHE_DIR = pathlib.Path("cache")
 CACHE_DIR.mkdir(exist_ok=True)
 
 def _cache_path(prefix: str, key) -> pathlib.Path:
-    key_str = str(key)                     # <-- make sure it's a string
+    key_str = str(key)                     
     h = hashlib.sha1(key_str.encode("utf-8")).hexdigest()
     return CACHE_DIR / f"{prefix}_{h}.json"
 
@@ -109,7 +109,7 @@ def find_fixtures_between_teams(team1, team2, season, league=39):
         h = (f["teams"]["home"]["name"] or "").lower()
         a = (f["teams"]["away"]["name"] or "").lower()
 
-        # robust match: each input must appear in either home or away
+        
         if ((t1 in h) or (t1 in a)) and ((t2 in h) or (t2 in a)):
             matches.append({
                 "fid": f["fixture"]["id"],
@@ -144,8 +144,7 @@ def stats_df_from(st_raw, force=False):
             }) 
         
     df = pd.DataFrame(rows)
-    #if df.empty():
-        #return df
+    
     
     dfp = df.pivot_table(index="teams", columns="type", values="value", aggfunc="first").reset_index()
     return dfp
@@ -485,7 +484,7 @@ def head_to_head_report(team1: str, team2: str, season: int, league: int = 39,
         else:
             lines.append("Goal data unavailable for this match.\n")
 
-        lines.append("---\n")  # Divider between matches
+        lines.append("---\n")  
 
     return "\n".join(lines)
 
