@@ -40,15 +40,23 @@ prompt_template = ChatPromptTemplate.from_messages([
     (
         "system",
         (
-            "You are a football statistics assistant. "
-            "When the user asks about matches between two teams, "
-            "you MUST call the `head_to_head_report` tool to generate the report. "
-            "Ensure you include the season year (e.g., 2022) when using the tool. "
-            "After the tool runs, summarize the results clearly."
+        "You are a football statistics assistant.\n\n"
+        "CRITICAL RULES:\n"
+        "1. When calling the `head_to_head_report` tool, you MUST return the tool output EXACTLY as it is.\n"
+        "2. NEVER rewrite, reformat, rename, or paraphrase match lines.\n"
+        "3. The tool already outputs match lines in this required format:\n"
+        "   YYYY-MM-DD — HomeTeam X–Y AwayTeam\n"
+        "   (em dash between date and teams, en dash between score numbers)\n"
+        "4. DO NOT convert dates to natural language (e.g., 'January 21, 2023').\n"
+        "5. DO NOT add bullet points, numbering, or any extra words before the match lines.\n"
+        "6. The match lines MUST remain at the top of the output, unchanged.\n\n"
+        "7. Give Statistics of all the matches between them for that season. \n"
+        "8. Give which player scored the goals. \n"
+        "After the match lines from the tool output, you may write a short summary in plain English."
         ),
     ),
     ("human", "{input}"),
-    ("assistant", "{agent_scratchpad}"),  # NEW LINE — REQUIRED
+    ("assistant", "{agent_scratchpad}"),  
 ])
 
 agent_runnable = create_tool_calling_agent(
@@ -127,110 +135,6 @@ if st.button("Run Analysis", type="primary", use_container_width=True):
 
     # ---------- Render: pretty match cards + stat pills ----------
     st.markdown("### Results")
-
-    # Collect chart paths (both explicit lines and markdown images)
-    chart_paths = []
-    for ln in output_text.splitlines():
-        tok = "chart saved: "
-        if tok in ln:
-            chart_paths.append(ln.split(tok, 1)[1].strip())
-    chart_paths += re.findall(r'!\[.*?\]\((.*?)\)', output_text)
-
-    # Split into blocks by blank line
-    blocks, block = [], []
-    for ln in output_text.splitlines():
-        if ln.strip() == "":
-            if block:
-                blocks.append(block)
-                block = []
-        else:
-            block.append(ln)
-    if block:
-        blocks.append(block)
-
-    def pill_html(label, home_val, away_val):
-        return f'<span class="pill"><b>{label}</b>: {home_val} | {away_val}</span>'
-
-    cards_html = []
-    for bk in blocks:
-        # Look for a scoreline like "YYYY-MM-DD — Home X–Y Away"
-        scoreline = next((
-    x for x in bk 
-    if re.search(r"\d{4}-\d{2}-\d{2}.*(—|-).*?(\d+[-–]\d+)", x)
-), None)
-        
-        if not scoreline:
-            continue
-
-        date = scoreline.split("—")[0].strip()[:10]
-        rest = scoreline.split("—", 1)[1].strip()
-        # "Home X–Y Away"
-        home_part, away_part = rest.split("–")
-        home_name = " ".join(home_part.split()[:-1]).strip()
-        home_goals = home_part.split()[-1].strip()
-        away_goals = away_part.split()[0].strip()
-        away_name = " ".join(away_part.split()[1:]).strip()
-
-        # Try to find stat lines in this block (best-effort)
-        sog_line = next((x for x in bk if "Shots on goal" in x or "Shots on Goal" in x), "")
-        ts_line = next((x for x in bk if "Total shots" in x or "Total Shots" in x), "")
-        pos_line = next((x for x in bk if "Possession" in x), "")
-
-        # Best-effort value extraction
-        def two_vals(line):
-            m = re.findall(r":\s*([\d\.%]+)", line)
-            if len(m) >= 2:
-                return m[0], m[1]
-            return "—", "—"
-
-        pill_list = []
-        if sog_line:
-            a, b = two_vals(sog_line); pill_list.append(pill_html("Shots on Goal", a, b))
-        if ts_line:
-            a, b = two_vals(ts_line); pill_list.append(pill_html("Total Shots", a, b))
-        if pos_line:
-            a, b = two_vals(pos_line); pill_list.append(pill_html("Possession", a, b))
-
-        pills_html = ''.join(pill_list) if pill_list else '<span class="pill">Stats unavailable for this fixture</span>'
-
-        cards_html.append(f"""
-        <div class="match-card">
-          <div class="match-top">
-            <div>{date}</div>
-            <div class="badge">Premier League</div>
-          </div>
-          <div class="match-teams">
-            <div>{home_name} <span class="badge">{home_goals}</span></div>
-            <div>vs</div>
-            <div>{away_name} <span class="badge">{away_goals}</span></div>
-          </div>
-          <div class="section-title">Key stats</div>
-          <div class="stat-row">
-            {pills_html}
-          </div>
-        </div>
-        """)
-
-    if cards_html:
-        st.markdown("\n".join(cards_html), unsafe_allow_html=True)
-    else:
-        st.info("No match cards could be rendered from the agent output.")
-
-    # ---------- Optional charts ----------
-    if show_charts and chart_paths:
-        st.markdown("### Charts")
-        grid = st.columns(2)
-        for i, p in enumerate(chart_paths):
-            p = p.strip()
-            if os.path.exists(p):
-                with grid[i % 2]:
-                    st.image(p, use_container_width=True)
-            else:
-                if p.startswith("http://") or p.startswith("https://"):
-                    with grid[i % 2]:
-                        st.image(p, use_container_width=True)
-                else:
-                    st.caption(f"(Chart path not found: {p})")
 
     # ---------- Raw text (collapsible) ----------
     with st.expander("See full agent output", expanded=not compact):

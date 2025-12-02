@@ -421,76 +421,74 @@ def head_to_head_report(team1: str, team2: str, season: int, league: int = 39,
         return f"No fixtures found for {team1} vs {team2} in season {season} (league {league})."
 
     lines = []
+
     for fx in fixtures:
-        line = f"{fx['date'][:10]} — {fx['home']} {fx['home_goals']}–{fx['away_goals']} {fx['away']}"
-        print(line)                # for live notebook logs
-        lines.append(line)
+        date = fx["date"][:10]
+        home = fx["home"]
+        away = fx["away"]
+        score = f"{home} {fx['home_goals']}–{fx['away_goals']} {away}"
 
+        # Header
+        lines.append(f"### {date} — {score}\n")
+
+        # ---------- STATS ----------
         st_raw = get_stats(fx["fid"], force=force)
-        if not st_raw:
-            lines.append("  (No statistics available)")
+        if st_raw:
+            st_map = stats_dict_from(st_raw)
+
+            def v(team, key):
+                return st_map.get(team, {}).get(key, "—")
+
+            # Markdown stats table
+            lines.append("**Match Statistics**")
+            lines.append("| Team | Shots on Goal | Total Shots | Possession |")
+            lines.append("|------|----------------|-------------|------------|")
+            lines.append(
+                f"| {home} | {v(home, 'Shots on Goal')} | {v(home, 'Total Shots')} | "
+                f"{v(home, 'Ball Possession')} |"
+            )
+            lines.append(
+                f"| {away} | {v(away, 'Shots on Goal')} | {v(away, 'Total Shots')} | "
+                f"{v(away, 'Ball Possession')} |"
+            )
+            lines.append("")  # blank line
+        else:
+            lines.append("Stats unavailable for this match.\n")
+
+        # ---------- GOAL SCORERS ----------
+        ev_raw = get_events(fx["fid"], force=force)
+        if ev_raw:
+            ev_df = events_df_from(ev_raw)
+            goals_df = ev_df[ev_df["type"] == "Goal"]
+
+            def scorers(team):
+                tdf = goals_df[goals_df["team"] == team]
+                if tdf.empty:
+                    return "None"
+                out = []
+                for _, row in tdf.iterrows():
+                    p = row.get("player") or "Unknown"
+                    m = row.get("minute")
+                    d = row.get("detail") or ""
+                    tag = f"{m}'" if m else ""
+                    if d and d.lower() not in ("normal goal",):
+                        tag += f" ({d})"
+                    out.append(f"{p} {tag}".strip())
+                return "; ".join(out)
+
+            lines.append("**Goal Scorers**")
+            lines.append("| Team | Goal Scorers |")
+            lines.append("|------|--------------|")
+            lines.append(f"| {home} | {scorers(home)} |")
+            lines.append(f"| {away} | {scorers(away)} |")
             lines.append("")
-            continue
+        else:
+            lines.append("Goal data unavailable for this match.\n")
 
-        st_df  = stats_df_from(st_raw)
-        st_map = stats_dict_from(st_raw)
-        if use_llm and not st_df.empty:
-            agent = make_stats_agent(st_df)
-            blurb = agent.invoke({"input": "Summarize shots on goal, total shots, and possession per team succinctly."}).get("output","")
-            if blurb: lines.append("  " + blurb)
-
-        fig = plot_combo_chart(
-        st_map,
-        metrics=["Shots on Goal", "Total Shots", "Ball Possession", "Passes accurate", "Fouls"],
-        title=f"{team1} vs {team2} ({season})"
-    )
-
-    out_path = os.path.join(save_dir, f"{team1}_vs_{team2}_{season}.png")
-    fig.savefig(out_path, bbox_inches="tight")
-    plt.close(fig)
-
-    # Add line for Streamlit to detect
-    lines.append(f"📈 chart saved: {out_path}")
+        lines.append("---\n")  # Divider between matches
 
     return "\n".join(lines)
 
-
-# In[17]:
-
-
-from langchain.tools import StructuredTool
-from langchain.agents import initialize_agent, AgentType
-
-head_to_head_tool = StructuredTool.from_function(
-    func=head_to_head_report,
-    args_schema=H2HArgs,
-    name="head_to_head_report",
-    description=(
-        "Use this to answer prompts like 'Give me result and stats between TEAM1 vs TEAM2, season YYYY'. "
-        "It finds all fixtures for that league/season, prints each result line, shows a radar+split-bar chart, "
-        "and returns a concise text summary. Defaults: league=39 (EPL), use_llm=True."
-    ),
-)
-
-agent = initialize_agent(
-    tools=[head_to_head_tool],
-    llm=llm,
-    agent=AgentType.OPENAI_FUNCTIONS,
-    verbose=True,
-)
-
-
-# In[18]:
-
-
-
-# In[ ]:
-
-
-
-
-
-# In[ ]:
 
 
 
