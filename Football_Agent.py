@@ -483,23 +483,6 @@ agent = initialize_agent(
 # In[18]:
 
 
-prompt = "Give me result and stats between Chelsea vs Liverpool, season 2022"
-resp = agent.invoke({"input": prompt})
-print("\n---- Agent Text Output ----\n", resp["output"])
-
-from IPython.display import display, Image
-
-# collect chart paths the tool printed
-paths = []
-for ln in resp["output"].splitlines():
-    token = "chart saved: "
-    if token in ln:
-        paths.append(ln.split(token, 1)[1].strip())
-
-# show charts NOW (after Finished chain)
-for p in paths:
-    display(Image(filename=p))
-
 
 # In[ ]:
 
