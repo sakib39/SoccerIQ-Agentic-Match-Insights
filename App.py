@@ -8,10 +8,10 @@ from langchain.tools import StructuredTool
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate
 
+# --- your existing tool function; DO NOT CHANGE this import ---
+from Football_Agent import head_to_head_report  # noqa: F401
 
-from Football_Agent import head_to_head_report  
-
-
+# ---------- LangChain tool wiring (agent parses raw prompt for us) ----------
 class H2HArgs(BaseModel):
     """Arguments for head_to_head_report."""
     team1: str = Field(..., description="Team name, e.g., 'Chelsea'")
@@ -27,7 +27,7 @@ h2h_tool = StructuredTool.from_function(
     name="head_to_head_report",
     description=(
         "Generate the head-to-head report and save charts for two teams in a given season. "
-        "Understands EPL (league=39). Include season year in the user's prompt."
+        "Understands EPL (league=39) and any other league when given the correct league ID."
     ),
     args_schema=H2HArgs,
 )
@@ -35,28 +35,28 @@ h2h_tool = StructuredTool.from_function(
 # LLM
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
-
+# New-style LangChain agent: prompt + tool-calling agent + executor
 prompt_template = ChatPromptTemplate.from_messages([
     (
         "system",
         (
-        "You are a football statistics assistant.\n\n"
-        "CRITICAL RULES:\n"
-        "1. When calling the `head_to_head_report` tool, you MUST return the tool output EXACTLY as it is.\n"
-        "2. NEVER rewrite, reformat, rename, or paraphrase match lines.\n"
-        "3. The tool already outputs match lines in this required format:\n"
-        "   YYYY-MM-DD — HomeTeam X–Y AwayTeam\n"
-        "   (em dash between date and teams, en dash between score numbers)\n"
-        "4. DO NOT convert dates to natural language (e.g., 'January 21, 2023').\n"
-        "5. DO NOT add bullet points, numbering, or any extra words before the match lines.\n"
-        "6. The match lines MUST remain at the top of the output, unchanged.\n\n"
-        "7. Give Statistics of all the matches between them for that season. \n"
-        "8. Give which player scored the goals. \n"
-        "After the match lines from the tool output, you may write a short summary in plain English."
+            "You are a football statistics assistant.\n\n"
+            "CRITICAL RULES:\n"
+            "1. The UI passes you an explicit league id: {league_id}.\n"
+            "2. When calling the `head_to_head_report` tool, you MUST use this exact value "
+            "for the `league` argument and MUST NOT infer league from text.\n"
+            "3. When the user asks about matches between two teams, you MUST call the tool.\n"
+            "4. The tool already outputs match lines in the format:\n"
+            "   YYYY-MM-DD — HomeTeam X–Y AwayTeam\n"
+            "   (em dash between date and teams, en dash between score numbers)\n"
+            "5. Do NOT reformat or rewrite the match lines.\n"
+            "6. After the tool output, you may add a short, plain-English summary.\n\n"
+            "7. Include statistics for all matches found in that season.\n"
+            "8. Mention which players scored the goals when that information is available."
         ),
     ),
     ("human", "{input}"),
-    ("assistant", "{agent_scratchpad}"),  
+    ("assistant", "{agent_scratchpad}"),
 ])
 
 agent_runnable = create_tool_calling_agent(
@@ -106,6 +106,18 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# ---------- League selector ----------
+league_options = {
+    "Premier League (England)": 39,
+    "La Liga (Spain)": 140,
+    "Serie A (Italy)": 135,
+    "Bundesliga (Germany)": 78,
+    "Ligue 1 (France)": 61,
+    "MLS (USA)": 253,
+}
+league_label = st.selectbox("League", list(league_options.keys()), index=0)
+league_id = league_options[league_label]
+
 # ---------- Prompt ----------
 user_query = st.text_input(
     "Prompt",
@@ -122,18 +134,17 @@ with cols[1]:
 # ---------- Run ----------
 if st.button("Run Analysis", type="primary", use_container_width=True):
     with st.spinner("Agent is working..."):
-        # RAW prompt → agent; the tool schema guides argument extraction
-        resp = agent.invoke({"input": user_query})
+        # Pass both the natural-language input and the league_id into the agent
+        resp = agent.invoke({"input": user_query, "league_id": league_id})
         output_text = resp.get("output", "") if isinstance(resp, dict) else str(resp)
 
     # Friendly warning if agent claims no fixtures
     if "No fixtures found" in output_text:
         st.warning(
-            "No fixtures were found. Double-check the season (e.g., 2022 for EPL 2022–23) and team names. "
+            "No fixtures were found. Double-check the season (e.g., 2022 for 2022–23) and team names. "
             "You can also try phrasing like: “Team A vs Team B, season 2022”."
         )
 
-    # ---------- Render: pretty match cards + stat pills ----------
     st.markdown("### Results")
 
     # ---------- Raw text (collapsible) ----------
